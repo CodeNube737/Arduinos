@@ -1,5 +1,6 @@
 // stepperControl.ino
-/* By Mikhail R & AI
+/* By Mikhail R & AI, 2025/jul/25
+ * revised same-day to add serial com to read ports/states on Arduino IDE
   Inputs
     Analog voltage readings from pins A6 and A7, expecting 1-5V, not greater than 5V
     Converted to voltages for diagnostic reference (optional Serial for debugging)
@@ -31,6 +32,7 @@ void setup() {
   pinMode(DIR_PIN, OUTPUT);
   pinMode(PUL_PIN, OUTPUT);
   analogReference(DEFAULT); // For my Nano: 5V reference
+  Serial.begin(9600); // Added serial output
 }
 
 void loop() {
@@ -50,6 +52,20 @@ void loop() {
     motorState = CW;
   } else {
     motorState = CCW;
+  }
+
+  // 💬 Print debug info to Serial
+  Serial.print("Order: ");
+  Serial.print(orderVoltage, 2);
+  Serial.print("V\tResponse: ");
+  Serial.print(responseVoltage, 2);
+  Serial.print("V\tDiff: ");
+  Serial.print(differential);
+  Serial.print("\tState: ");
+  switch (motorState) {
+    case IDLE: Serial.println("IDLE"); break;
+    case CW: Serial.println("CW"); break;
+    case CCW: Serial.println("CCW"); break;
   }
 
   // Apply direction
