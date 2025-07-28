@@ -1,0 +1,36 @@
+// Stepper controller circuit with feedback
+// 	this module programs an Arduino Nano to output a PUL and a DIR signal to a motor controller 
+// 	(both the version of Nano and controller I an using run at 5V data signals).
+// 	Inputs are two analog voltages at 1V-5V named _order (sys input) and _response (feedback)
+// 	A wiring diagram has been setup on LTSpice
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+///input
+// One loop() constantly reads the voltages of _order (A6) & _response (A7)
+//	the loop should also convert each to voltage, for reference, instead of only having the counts on hand
+
+
+///states & math
+// the next loop() compares them: if both inputs are at 3.0V/5.0V the stepper position is 90°
+// 	this loop() should be constantly return and modify 2 variables:
+//		_differential: the difference in the two analog voltages, in counts. e.g. (A6=787) - (A7=1022) = -235 differential
+//		_state: IDLE,CW,CCW (yes, this loop contains a state machine)
+//	if _order lowers to the minimum (1.0/5.0V) then the stepper spins ccw to 240°
+//	if _order increases to maximum (5.0/5.0V), then the stepper spins cw to -60° (300°)
+//	if _order is lower than _response CCW, or vice-versa, CW, else IDLE
+
+
+///outputs
+// The last loop() smoothly apportions the outputs using propotional control
+// dir (D9) is set HI if CW, and LO if CCW (may be backwards)... IDLE is whatever
+// pulse(D11) sebds out the steps until the state is once again IDLE
+//	However, this needs proportional control
+//		steps are faster the greater the _differential
+//		this essentially makes a very fast turn on the stepper, which slows to a halt just as the _differential approaches 0 (_order== (_response - CUSHION))
+
+///parameters
+// there should also be 3 parameters:
+//	PRECISION, literally, the # of counts of tolerated _differential that triggers IDLE state
+//	SPEED, a number from 0-100 (somehow make 0 slow, and 100 fast) that can make the stepper motor turn very fast/slow
+//	CUSHION, the threshold for when proportional control should really sart to slow-down in speed
