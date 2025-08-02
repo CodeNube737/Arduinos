@@ -1,0 +1,34 @@
+can Arduino IDE's output not run print after compilation?
+Great question — and yes, that's correct in a certain sense. Here's the breakdown:
+
+🧠 What "Print After Compilation" Really Means
+The Arduino IDE compiles your sketch into machine code and uploads it to your microcontroller (like an Arduino Uno).
+
+After that, it's the microcontroller itself that runs the code, not the IDE.
+
+So if you're expecting the IDE to display Serial.print() output automatically after compiling, it won’t. It’s not like running C++ in an IDE with a console — the magic happens on the board!
+
+🖥️ How to See Output
+To view printed output, make sure to:
+
+Use Serial.begin(9600); in setup()
+
+Use Serial.print() or Serial.println() to output text
+
+Open the Serial Monitor in the Arduino IDE (top-right icon or Ctrl+Shift+M)
+
+Set the baud rate in the Serial Monitor to match Serial.begin() (usually 9600)
+
+Only then will you see the output — it's coming from the board, through the USB connection, into the Serial Monitor. Not from the IDE itself.
+
+Let me know what kind of output you’re hoping to get — maybe we can spice it up with LED feedback or a tiny OLED screen! 😄
+
+////////////////////////////////////////////////////////////
+
+C:\Users\Owner\Downloads\Mechtronics\stepper_controller\arduino\examples\Hello\Hello.cpp:3:10: fatal error: iostream: No such file or directory
+ #include <iostream>
+          ^~~~~~~~~~
+compilation terminated.
+exit status 1
+
+Compilation error: iostream: No such file or directory
