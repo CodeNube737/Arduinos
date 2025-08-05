@@ -1,7 +1,8 @@
 // stepperControl.ino
 /* By Mikhail R, 2025/aug/1
  *    Runs a stepper motor through a typical driver with DIR, PUL, and EN inputs
- * Revised same day, after some short debugging and clarifying comments
+ * Revised By MR 2025/aug/5, made serial better, and fixed improper CW/CW set. (may take a few tries).
+ *    note: best debug is with serial on, or serial off and 2sec/div 'scope on RESPONSE_PIN
 */
 ////////////////////////////////////////////////////////////////////////
 
@@ -16,26 +17,26 @@
 #define MIN_PULSE 1250  // in µs, eg. 1250us = a 2.5ms period, or 400Hz base-speed, at 400 ppr, that's 1rev/sec. Adjust MIN_PULSE with PPR.
 #define SPEED 90        // percentage of RDNY-speed
 #define ACCELERATION 1  // for CUSHION, must be positive. e.g. 5*30=150µs gained from acceleration
-#define PRECISION 2     // as small an integer as possible but can still read feedback (response)
-#define DEADBAND 16     // should be at least enough to cover noise, for exiting IDLE. must be larger at smaller PPR.
-#define CUSHION 30      // as big as desired, speed-up/slow-down before leaving/entering IDLE
+#define PRECISION 10    // as small an integer as possible but can still read feedback (response)
+#define DEADBAND 50     // should be at least enough to cover noise, for exiting IDLE. must be larger at smaller PPR.
+#define CUSHION 5       // as big as desired, speed-up/slow-down before leaving/entering IDLE
 #define RDNY 10         // seconds per revolution (anticipated speed)
 // global variables
 enum State { IDLE,
              CW,
              CCW };
 State motorState = IDLE;
-bool startCushion = false;                                         // a sort-of sub state flag
-bool endCushion = false;                                           // a sort-of sub state flag
-int baseDelay = (MIN_PULSE * 2 * 200 / PPR * 100 / SPEED * RDNY);  // see notes
+bool startCushion = false;  // a sort-of sub state flag
+bool endCushion = false;    // a sort-of sub state flag
+bool serialMode = false; // disables motor's EN pin
+const int baseDelay = (MIN_PULSE * 2 * 200 / PPR * 100 / SPEED * RDNY);  // see notes
 int stepDelay = baseDelay;                                         // starting value
 int orderInput, responseInput, differential, startPos, endPos;     // should never exceed ±1023, or ±5V
-const int MINinput = 204;                                          // 1 Volt (4mA)... currently unused
-const int MAXinput = 1023;                                         // 5 Volts (20mA)
+//const int MINinput = 204;                                          // 1 Volt (4mA)... currently unused
+//const int MAXinput = 1023;                                         // 5 Volts (20mA)
 //int counter = 0; // may help for future iterations?
-// helper functions
 
-//int constrainInput(int value) { return constrain(value, MINinput, MAXinput); } //.. currently unused
+// helper functions
 
 void runStepper(int stepDelay) {
   if (stepDelay <= MIN_PULSE)  // speed limit on PUL_PIN. The lower the period, the higher the freq.
@@ -48,14 +49,16 @@ void runStepper(int stepDelay) {
 }
 
 void setCushion() {  // set flags (sub-state)
-  startCushion = abs(responseInput - startPos) <= CUSHION;
-  endCushion = abs(responseInput - endPos) <= CUSHION;
-  if (motorState == IDLE) { // IDLE state should turn-off all cushion/accel flags
+  //startCushion = abs(responseInput - startPos) <= CUSHION;
+  //endCushion = abs(responseInput - endPos) <= CUSHION;
+  if (motorState == IDLE) {  // IDLE state should turn-off all cushion/accel flags
     startCushion = false;
     endCushion = false;
   }
   return;
 }
+
+//int constrainInput(int value) { return constrain(value, MINinput, MAXinput); } // ... currently unused
 
 void updateInputs() {  // updateInputs() and subtract to get int differential
   orderInput = analogRead(ORDER_PIN);
@@ -98,14 +101,12 @@ void updateState() {  // updateState() based solely on differential.
 }
 
 void updateOutputs() {  // updateOutputs() based on state and differential. Most complex.
-
-  digitalWrite(DIR_PIN, motorState == CW ? HIGH : LOW);  // Apply direction (may be reversed)
-
   if (motorState == IDLE) {
     digitalWrite(EN_PIN, HIGH);  // Disable driver
     stepDelay = baseDelay;
   } else {
     digitalWrite(EN_PIN, LOW);  // Enable driver
+    digitalWrite(DIR_PIN, motorState == CCW ? HIGH : LOW);  // Apply direction (may be reversed)
     // set speed delay of a cycle
     if (startCushion)
       stepDelay -= ACCELERATION;  // decrease period to increase frequency
@@ -113,17 +114,21 @@ void updateOutputs() {  // updateOutputs() based on state and differential. Most
       stepDelay += ACCELERATION;  // increase period to decrease frequency
     else
       stepDelay = stepDelay + 0;  // maybe redundant, but this is max-speed, and I want to emphasize it
-    runStepper(stepDelay);        // after speed delay of 1 cycle is set, run motor for 1 cycle
+    // run either Stepper or serial debug
+    if (serialMode)
+      digitalWrite(EN_PIN, HIGH);  // Disable driver
+    runStepper(stepDelay);         // after speed delay of 1 cycle is set, run motor for 1 cycle
   }
   return;
 }
 
-void runSerial() {  // to run serial com
+void runSerial() {    // to run serial com, disables motor's EN pin
+  serialMode = true;  // disables motor's EN pin
   Serial.print("Order: ");
   Serial.print(orderInput);  // or voltage
-  Serial.print("V\tResponse: ");
+  Serial.print("\tResponse: ");
   Serial.print(responseInput);  // or voltage
-  Serial.print("V\t  Diff: ");
+  Serial.print("\t  Diff: ");
   Serial.print(differential);
   Serial.print("\tState: ");
   switch (motorState) {
@@ -139,11 +144,11 @@ void setup() {
   pinMode(DIR_PIN, OUTPUT);
   pinMode(PUL_PIN, OUTPUT);
   pinMode(EN_PIN, OUTPUT);
-  //Serial.begin(9600); // optional, for troubleshooting only
+  //Serial.begin(9600);  // optional, for troubleshooting only
 }
 void loop() {
   updateInputs();
   updateState();
   updateOutputs();
-  //runSerial(); // optional, for troubleshooting only
+  //runSerial();  // optional, for troubleshooting only
 }
