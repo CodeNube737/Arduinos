@@ -1,32 +1,8 @@
-// main.cpp - Cross-platform stepper motor control (adapted from Arduino)
-// By Mikhail R, 2025/aug/1, ported to C++
-#include <iostream>
-#include <cmath>
-#include <thread>
-#include <chrono>
+// stepperControl.cpp - Stepper motor control logic implementation
+#include "stepperControl.h"
 
-// Pin definitions (replace with actual hardware interface as needed)
-constexpr int PUL_PIN = 8;
-constexpr int DIR_PIN = 10;
-constexpr int EN_PIN = 12;
-constexpr int ORDER_PIN = 6;     // Analog input stub
-constexpr int RESPONSE_PIN = 7;  // Analog input stub
-
-// Numeric constants for fine-tuning
-constexpr int PPR = 400;
-constexpr int MIN_PULSE = 1250; // in microseconds
-constexpr int SPEED = 90;
-constexpr int ACCELERATION = 1;
-constexpr int PRECISION = 2;
-constexpr int DEADBAND = 16;
-constexpr int CUSHION = 30;
-constexpr int RDNY = 10;
-constexpr int MINinput = 204;
-constexpr int MAXinput = 1023;
-
-// State enum
-enum State { IDLE, CW, CCW };
-State motorState = IDLE;
+// State and variables
+enum State motorState = IDLE;
 bool startCushion = false;
 bool endCushion = false;
 int baseDelay = (MIN_PULSE * 2 * 200 / PPR * 100 / SPEED * RDNY);
@@ -36,7 +12,6 @@ int orderInput = 0, responseInput = 0, differential = 0, startPos = 0, endPos = 
 // Stub functions for hardware I/O (replace with actual implementation)
 void digitalWrite(int pin, bool value) {
     // TODO: Implement hardware-specific digital output
-    // std::cout << "Pin " << pin << " set to " << value << std::endl;
 }
 
 void pinMode(int pin, int mode) {
@@ -45,7 +20,6 @@ void pinMode(int pin, int mode) {
 
 int analogRead(int pin) {
     // TODO: Implement hardware-specific analog input
-    // For simulation, return a value or read from user input/file
     return 512; // Placeholder
 }
 
@@ -121,19 +95,17 @@ void runSerial() {
     std::cout << std::endl;
 }
 
-// Main entry point
-int main() {
-    // Setup (replace with actual pin setup if needed)
+// Arduino-style setup and loop wrappers
+void stepperSetup() {
     pinMode(DIR_PIN, 1); // OUTPUT
     pinMode(PUL_PIN, 1);
     pinMode(EN_PIN, 1);
-    // Main loop
-    while (true) {
-        updateInputs();
-        updateState();
-        updateOutputs();
-        // runSerial(); // Uncomment for debug output
-        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Simulate Arduino loop timing
-    }
-    return 0;
+}
+
+void stepperLoop() {
+    updateInputs();
+    updateState();
+    updateOutputs();
+    // runSerial(); // Uncomment for debug output
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
