@@ -2,7 +2,7 @@
 /* By Mikhail R, 2025/aug/1
  *    Runs a stepper motor through a typical driver with DIR, PUL, and EN inputs
  * Revised By MR 2025/aug/5, made serial better, and fixed improper CW/CW set. 
- *    Also, constrained input to prevent URV/LRV failure.
+ *    Also, constrained input to prevent URV/LRV failure. And ensured motor works as intended.
  *    note: best debug is with serial on, or serial off and 2sec/div 'scope on RESPONSE_PIN
 */
 ////////////////////////////////////////////////////////////////////////
@@ -14,38 +14,38 @@
 #define ORDER_PIN A6
 #define RESPONSE_PIN A7
 // numeric constants for fine-tuning
-#define PPR 400          // created because Leadshine ctrllr sets ppr. 200 = full, 400 = 1/2... etc. Adjust MIN_PULSE with PPR.
-#define MIN_PULSE 1250   // in µs, eg. 1250us = a 2.5ms period, or 400Hz base-speed, at 400 ppr, that's 1rev/sec. Adjust MIN_PULSE with PPR.
-#define SPEED 90         // percentage of RDNY-speed
-#define ACCELERATION 10  // for CUSHION, must be positive. e.g. 5*30=150µs gained from acceleration
+#define PPR 800          // created because Leadshine ctrllr sets ppr. 200 = full, 400 = 1/2... etc. Adjust MIN_PULSE with PPR.
+#define MIN_PULSE 625    // in µs, eg. 625us = a 1.25ms period, or 800Hz base-speed, at 800 ppr, that's 1rev/sec. Adjust MIN_PULSE with PPR.
+#define MAX_PULSE 5000   // pretty much the slowest you can go
+#define SPEED 110        // percentage of RDNY-speed
+#define ACCELERATION 30  // for CUSHION, must be positive. e.g. 5*30=150µs gained from acceleration
 #define PRECISION 5      // as small an integer as possible but can still read feedback (response)
 #define DEADBAND 32      // should be at least enough to cover noise, for exiting IDLE. must be larger at smaller PPR.
-#define CUSHION 100      // as big as desired, speed-up/slow-down before leaving/entering IDLE
+#define CUSHION 400      // as big as desired, speed-up/slow-down before leaving/entering IDLE
 #define RDNY 10          // seconds per revolution (anticipated speed)
 // global variables
 enum State { IDLE,
              CW,
              CCW };
 State motorState = IDLE;
-bool startCushion = false;                                               // a sort-of sub state flag
-bool endCushion = false;                                                 // a sort-of sub state flag
-bool serialMode = false;                                                 // disables motor's EN pin
-const int baseDelay = (MIN_PULSE * 2 * 200 / PPR * 100 / SPEED * RDNY);  // see notes
-int stepDelay = baseDelay;                                               // starting value
-int orderInput, responseInput, differential, startPos, endPos;           // should never exceed ±1023, or ±5V
-const int MINinput = 204 + PRECISION;                                    // 1 Volt (4mA)
-const int MAXinput = 1023 - 67 - PRECISION;                              // 5 Volts-ish (20mA)... don't ask about the 67, that's from experiment
+bool startCushion = false;                                                          // a sort-of sub state flag
+bool endCushion = false;                                                            // a sort-of sub state flag
+bool serialMode = false;                                                            // disables motor's EN pin
+const double baseDelay = (MIN_PULSE * 200 / PPR * 100 / SPEED * RDNY);              // see notes
+double stepDelay = baseDelay;                                                       // starting value
+int orderInput = 0, responseInput = 0, differential = 0, startPos = 0, endPos = 0;  // should never exceed ±1023, or ±5V
+const int MINinput = 204 + PRECISION;                                               // 1 Volt (4mA)
+const int MAXinput = 1023 - 67 - PRECISION;                                         // 5 Volts-ish (20mA)... don't ask about the 67, that's from experiment
 //int counter = 0; // may help for future iterations?
 
 // helper functions
 
-void runStepper(int stepDelay) {
-  if (stepDelay <= MIN_PULSE)  // speed limit on PUL_PIN. The lower the period, the higher the freq.
-    stepDelay = baseDelay;     // MIN_PULSE should be 1 rev/second
+void runStepper(int stepSize) {
+  constrain(stepSize, baseDelay, MAX_PULSE);  // set minimum and maximum speeds for the stepper
   digitalWrite(PUL_PIN, HIGH);
-  delayMicroseconds(stepDelay);  // this is the briefer of the two
+  delayMicroseconds(stepSize);  // this is the briefer of the two
   digitalWrite(PUL_PIN, LOW);
-  delayMicroseconds(stepDelay);
+  delayMicroseconds(stepSize);
   return;
 }
 
@@ -73,7 +73,6 @@ void updateInputs() {  // updateInputs() and subtract to get int differential
 }
 
 void updateState() {  // updateState() based solely on differential.
-
   /* MUST: 
    * accelerate motor, 
    * reach speed (don't get trapped in loops, or u may miss the target), 
@@ -82,15 +81,16 @@ void updateState() {  // updateState() based solely on differential.
    * stop at target, set by ORDER
    * complete min-point to maxpoint (0-1023) in about 10 seconds (RDNY)
   */
-
   // CW
   if (differential > DEADBAND) {  // buffer to exit IDLE state
     motorState = CW;
+    endPos = orderInput;  // only updated not in IDLE state
     setCushion();
   }
   // CCW
   else if (differential < -DEADBAND) {
     motorState = CCW;
+    endPos = orderInput;  // only updated not in IDLE state
     setCushion();
   }
   // IDLE
@@ -98,7 +98,6 @@ void updateState() {  // updateState() based solely on differential.
     if (abs(differential) <= PRECISION)  // precision to read target and trigger IDLE despite over-stepping and noise
       motorState = IDLE;
     startPos = responseInput;  // only updated in IDLE state
-    endPos = orderInput;       // only updated in IDLE state
   }
   return;
 }
@@ -112,9 +111,9 @@ void updateOutputs() {  // updateOutputs() based on state and differential. Most
     digitalWrite(DIR_PIN, motorState == CCW ? HIGH : LOW);  // Apply direction (may be reversed)
     // set speed delay of a cycle
     if (startCushion)
-      stepDelay -= ACCELERATION;  // decrease period to increase frequency
+      stepDelay -= ACCELERATION;  // decrease period to increase frequency (accelerate)
     else if (endCushion)
-      stepDelay += ACCELERATION;  // increase period to decrease frequency
+      stepDelay += ACCELERATION;  // increase period to decrease frequency (decelerate)
     else
       stepDelay = stepDelay + 0;  // maybe redundant, but this is max-speed, and I want to emphasize it
     // run either Stepper or serial debug
